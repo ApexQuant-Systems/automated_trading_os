@@ -1,50 +1,65 @@
 # Component Manifest Contract Header
-__module_name__ = "central_repository_logger"
-__build_version__ = "4.0.0-stable"
-__spec_contract_hash__ = "logs_998a12c"
-__regression_suite_hash__ = "logs_782b5e3"
+__module_name__ = "centralized_logging_engine"
+__build_version__ = "0.2.0-stable"
+__spec_contract_hash__ = "0x01_logger_core"
+__regression_suite_hash__ = "0x01_logger_verify"
 
-import logging
 import os
 import sys
-from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
 
-class ApexLogger:
-    """Centralized neutral logging interface tracking headless system metrics."""
-    def __init__(self, log_dir: str = "logs"):
+class CentralizedLogger:
+    """Thread-safe framework managing unified text stream tracking and persistence logs operations."""
+
+    def __init__(self, log_dir: str = "logs", log_file: str = "runtime.log"):
         self.log_dir = log_dir
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-            
-        self.logger = logging.getLogger("APEX_OS")
+        self.log_path = os.path.join(self.log_dir, log_file)
+        
+        # Ensure target logging infrastructure directory footprint exists safely on disk
+        os.makedirs(self.log_dir, exist_ok=True)
+        
+        # Initialize base root logging allocation references
+        self.logger = logging.getLogger("APEX_CORE")
         self.logger.setLevel(logging.INFO)
-        self.logger.handlers.clear()
         
-        # Standardized microsecond configuration mapping layout contract
-        formatter = logging.Formatter(
-            '[%(asctime)s.%(msecs)03d] [%(levelname)s] [%(module)s]: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-        
-        file_name = f"apex_runtime_{datetime.utcnow().strftime('%Y%m%d')}.log"
-        file_handler = logging.FileHandler(os.path.join(self.log_dir, file_name), encoding='utf-8')
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
+        # Prevent handler duplication leaks across double instantiation paths
+        if not self.logger.handlers:
+            formatter = logging.Formatter(
+                '[%(asctime)s] [%(levelname)s] [logger]: %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            
+            # 1. Standard Console Output Stream Handler Definition
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+            
+            # 2. Institutional Rotation File Persistence Handler Definition
+            # Prevents hard drive bloat by rolling over files at a 10MB ceiling constraint limit
+            file_handler = RotatingFileHandler(
+                self.log_path, 
+                maxBytes=10 * 1024 * 1024, 
+                backupCount=5, 
+                encoding='utf-8'
+            )
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
 
     def info(self, msg: str):
         self.logger.info(msg)
 
     def warning(self, msg: str):
-        self.logger.warning(f"WARNING: {msg}")
+        self.logger.warning(msg)
 
-    def error(self, msg: str, exception: Exception = None):
-        error_payload = f"CRITICAL_EXCEPTION: {msg}"
-        if exception:
-            error_payload += f" | Details: {str(exception)}"
-        self.logger.error(error_payload, exc_info=True)
+    def error(self, msg: str):
+        self.logger.error(msg)
 
-logger = ApexLogger()
+    def critical(self, msg: str):
+        self.logger.critical(msg)
+
+    def fetch_log_path(self) -> str:
+        """Returns physical placement coordinate reference for analytical review auditing."""
+        return self.log_path
+
+logger = CentralizedLogger()
