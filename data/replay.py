@@ -19,7 +19,7 @@ class HistoricalMarketReplayIterator:
         offset = 0
         while True:
             with db.connection() as conn:
-                # Query data using cursor offset chunks to enforce complete O(1) RAM threshold conservation
+                # Optimized chunked retrieval to balance disk read speeds with minimal memory consumption
                 rows = conn.execute("""
                     SELECT timestamp, open, high, low, close, volume
                     FROM market_data
