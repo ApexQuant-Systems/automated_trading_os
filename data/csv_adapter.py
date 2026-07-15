@@ -1,53 +1,67 @@
+# Component Manifest Contract Header
+__module_name__ = "csv_data_streaming_adapter"
+__build_version__ = "4.2.0-stable"
+__spec_contract_hash__ = "0x06_csv_stream_core"
+__regression_suite_hash__ = "0x06_csv_stream_verify"
+
+import csv
 import os
-import time
-from data.csv_adapter import csv_adapter
-from utils.database import db
+from typing import Dict, Any, Generator, List
+from data.loader import data_loader
+from logs.logger import logger
 
-print("\n=== RUNNING QUANT ENGINEERING REVIEW FOR MODULE 1.2 ===")
-start_time = time.perf_counter()
+class CSVStreamingAdapter:
+    """Streams large historical datasets from disk into ingestion pipelines using constant RAM footprints."""
 
-# 1. Generate local testing environment files dynamically
-test_csv_path = "real_historical_ticks.csv"
-with open(test_csv_path, "w", encoding="utf-8") as f:
-    f.write("timestamp,open,high,low,close,volume\n")
-    f.write("1721500000,60000.0,61000.0,59500.0,60500.0,450.0\n")
-    f.write("1721586400,60500.0,62000.0,60100.0,61800.0,520.0\n")
-    f.write("1721672800,61800.0,61500.0,61000.0,61200.0,300.0\n")  # Bad candle: High < Open (Will be filtered)
-    f.write("1721759200,61200.0,61900.0,60800.0,61500.0,-50.0\n")  # Bad candle: Negative Volume (Will be filtered)
+    def stream_lines(self, file_path: str, symbol: str, timeframe: str) -> Generator[Dict[str, Any], None, None]:
+        """Reads CSV files line-by-line using standard stream generators to prevent memory bloat."""
+        if not os.path.exists(file_path):
+            logger.error(f"Target data file not found on disk storage engine: {file_path}")
+            return
 
-# 2. Execute chunked ingestion streaming pipeline metrics
-metrics = csv_adapter.load_csv_in_chunks(test_csv_path, "BTCUSD", "1H", chunk_size=2)
-duration_ms = (time.perf_counter() - start_time) * 1000
+        with open(file_path, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    yield {
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "timestamp": int(row["timestamp"]),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row["volume"])
+                    }
+                except (KeyError, ValueError):
+                    # Skip malformed data rows or header contamination lines cleanly
+                    continue
 
-print("\n-------------------------------------------")
-print(f"Metrics Output:  Attempted: {metrics['attempted']} | Inserted: {metrics['inserted']} | Rejected: {metrics['rejected']}")
-print(f"Runtime Tracking: {duration_ms:.2f} ms")
-print("-------------------------------------------")
+    def load_csv_in_chunks(self, file_path: str, symbol: str, timeframe: str, chunk_size: int = 10000) -> Dict[str, int]:
+        """Groups data points into transaction chunks to optimize database writing latency."""
+        logger.info(f"Initiating memory-optimized historical load sequence for asset: {symbol} | Target: {file_path}")
+        
+        metrics = {"attempted": 0, "inserted": 0, "rejected": 0}
+        buffer: List[Dict[str, Any]] = []
 
-# 3. Dynamic Assertions Checks
-test_failed = False
+        for bar in self.stream_lines(file_path, symbol, timeframe):
+            metrics["attempted"] += 1
+            buffer.append(bar)
 
-if metrics["attempted"] != 4 or metrics["inserted"] != 2 or metrics["rejected"] != 2:
-    print("❌ Assertion Failure: Ingress filter count metrics mismatched.")
-    test_failed = True
-else:
-    print("✓ Verification: Out-of-sample data filtering rules working accurately.")
+            if len(buffer) >= chunk_size:
+                chunk_metrics = data_loader.ingress_batch(buffer)
+                metrics["inserted"] += chunk_metrics["inserted"]
+                metrics["rejected"] += chunk_metrics["rejected"]
+                buffer.clear()
 
-with db.connection() as conn:
-    row = conn.execute("SELECT * FROM market_data WHERE symbol = 'BTCUSD' ORDER BY timestamp DESC LIMIT 1").fetchone()
-    if row and row["close"] == 61800.0:
-        print(f"✓ Verification: Disk data retrievability loop working correctly. Read close price: ${row['close']}")
-    else:
-        print("❌ Assertion Failure: Target database records mismatch or not found.")
-        test_failed = True
+        # Flush remaining data trailing rows left inside the memory stack
+        if buffer:
+            chunk_metrics = data_loader.ingress_batch(buffer)
+            metrics["inserted"] += chunk_metrics["inserted"]
+            metrics["rejected"] += chunk_metrics["rejected"]
+            buffer.clear()
 
-# Clean disk footprints
-if os.path.exists(test_csv_path):
-    os.remove(test_csv_path)
+        logger.info(f"Ingress Transaction Complete -> Total Attempted: {metrics['attempted']} | Inserted: {metrics['inserted']} | Rejected: {metrics['rejected']}")
+        return metrics
 
-if test_failed:
-    print("=== QUANT ENGINEERING STATUS: FAILED ===\n")
-    exit(1)
-else:
-    print("=== QUANT ENGINEERING STATUS: PRODUCTION PASSED ===\n")
-    exit(0)
+csv_adapter = CSVStreamingAdapter()
