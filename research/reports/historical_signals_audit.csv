@@ -1,0 +1,4 @@
+timestamp,symbol,timeframe,trend,phase,last_break,bullish_sweep,bearish_sweep
+1722043200,LINKUSD,1H,BEARISH,EXPANSION,CHOCH,False,False
+1722046800,LINKUSD,1H,BEARISH,EXPANSION,CHOCH,False,False
+1722050400,LINKUSD,1H,BEARISH,CONTINUATION,CHOCH,False,False
