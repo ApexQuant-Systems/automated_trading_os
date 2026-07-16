@@ -1,17 +1,17 @@
 # Component Manifest Contract Header
-__module_name__ = "immutable_asset_registry"
-__build_version__ = "1.1.0-stable"
-__spec_contract_hash__ = "0x101_asset_registry_core"
-__regression_suite_hash__ = "0x101_asset_registry_verify"
+__module_name__ = "persistent_asset_registry"
+__build_version__ = "1.6.0-stable"
+__spec_contract_hash__ = "0x101_persistent_asset_core"
+__regression_suite_hash__ = "0x101_persistent_asset_verify"
 
 from typing import Dict, Any, List
+from utils.database import db_manager
 
-class AssetRegistry:
-    """Immutable central data matrix managing configurations for the target research universe."""
+class PersistentAssetRegistry:
+    """Manages structural definitions and seeding for the 15-market core research universe."""
 
     def __init__(self):
-        # 1. Standardized Multi-Market Universe Definitions (15 Chosen Global Assets)
-        self._registry: Dict[str, Dict[str, Any]] = {
+        self._static_universe = {
             # --- Tier 1: Crypto Assets ---
             "BTCUSDT": {
                 "asset_class": "CRYPTO", "venue": "BINANCE", "provider": "BINANCE_VISION",
@@ -92,25 +92,53 @@ class AssetRegistry:
                 "base_currency": "FTSE", "quote_currency": "GBP", "trading_hours": "INDEX_CHRONO"
             }
         }
+        self.initialize_and_seed()
+
+    def initialize_and_seed(self) -> int:
+        """Seeds the persistent asset registry table if it is currently unpopulated."""
+        seeded_count = 0
+        with db_manager.metadata_db() as conn:
+            cursor = conn.execute("SELECT COUNT(*) as count FROM asset_registry;")
+            if cursor.fetchone()["count"] == 0:
+                for symbol, meta in self._static_universe.items():
+                    conn.execute("""
+                        INSERT INTO asset_registry (
+                            symbol, asset_class, venue, provider, tick_size, 
+                            price_precision, volume_precision, base_currency, quote_currency, trading_hours
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """, (
+                        symbol, meta["asset_class"], meta["venue"], meta["provider"],
+                        meta["tick_size"], meta["price_precision"], meta["volume_precision"],
+                        meta["base_currency"], meta["quote_currency"], meta["trading_hours"]
+                    ))
+                    seeded_count += 1
+        return seeded_count
 
     def verify_asset_exists(self, symbol: str) -> bool:
-        """Verifies if the specified token is registered inside the tracking matrix universe."""
-        return symbol.upper() in self._registry
+        """Queries the persistent metadata database to check asset registration status."""
+        with db_manager.metadata_db() as conn:
+            cursor = conn.execute("SELECT 1 FROM asset_registry WHERE symbol = ?;", (symbol.upper(),))
+            return cursor.fetchone() is not None
 
     def get_asset(self, symbol: str) -> Dict[str, Any]:
-        """Fetches isolated configuration profile dictionary parameters for the target asset."""
-        sym = symbol.upper()
-        if sym not in self._registry:
-            raise KeyError(f"Asset Registry Core Drop: Symbol '{symbol}' is completely unknown to this platform.")
-        return self._registry[sym].copy()
+        """Retrieves the complete structural parameter profile row for a target instrument."""
+        with db_manager.metadata_db() as conn:
+            cursor = conn.execute("SELECT * FROM asset_registry WHERE symbol = ?;", (symbol.upper(),))
+            row = cursor.fetchone()
+            if not row:
+                raise KeyError(f"Asset Invalidation Exception: Ticker string '{symbol}' is completely unregistered.")
+            return dict(row)
 
     def get_watchlist_by_class(self, asset_class: str) -> List[str]:
-        """Returns all registered ticker symbol strings belonging to a target macro category."""
-        target_cls = asset_class.upper()
-        return [sym for sym, cfg in self._registry.items() if cfg["asset_class"] == target_cls]
+        """Extracts all matching symbol tokens filtered by a specific asset class."""
+        with db_manager.metadata_db() as conn:
+            cursor = conn.execute("SELECT symbol FROM asset_registry WHERE asset_class = ?;", (asset_class.upper(),))
+            return [row["symbol"] for row in cursor.fetchall()]
 
     def get_complete_watchlist(self) -> List[str]:
-        """Flattens the entire registry to return all 15 active research assets."""
-        return list(self._registry.keys())
+        """Queries the operational table database to return the complete 15-asset tracking scope."""
+        with db_manager.metadata_db() as conn:
+            cursor = conn.execute("SELECT symbol FROM asset_registry;")
+            return [row["symbol"] for row in cursor.fetchall()]
 
-asset_registry = AssetRegistry()
+asset_registry = PersistentAssetRegistry()

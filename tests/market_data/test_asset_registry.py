@@ -2,56 +2,57 @@ import sys
 import os
 import time
 
+# Enforce explicit 3-level path expansion traversal to map repository root directory boundary
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from market_data.asset_registry import asset_registry
 
-def run_regression_checks():
+def run_persistent_registry_regression():
     print("\n=== RUNNING QUANT ENGINEERING REVIEW FOR PHASE 1 MODULE 1 ===")
     start_time = time.perf_counter()
     
     test_failed = False
     
-    # Check 1: Verify full flattening load count totals exactly 15 assets
-    total_assets = asset_registry.get_complete_watchlist()
-    if len(total_assets) == 15:
-        print("✓ Verification: Full asset universe volume loaded exactly to target bounds (15 instruments).")
+    # Check 1: Verify persistent lookup matching exactly 15 loaded assets
+    watchlist = asset_registry.get_complete_watchlist()
+    if len(watchlist) == 15:
+        print("✓ Verification: Relational asset_registry table populated to target parameters bounds (15 instruments).")
     else:
-        print(f"❌ Assertion Failure: Asset count metrics drifted out of bounds: {len(total_assets)}")
+        print(f"❌ Assertion Failure: Database record volumes drifted out of bounds: {len(watchlist)}")
         test_failed = True
 
-    # Check 2: Verify structural data parameters integrity for Crypto Tier
+    # Check 2: Verify structural data precision profile rows
     try:
-        btc_cfg = asset_registry.get_asset("BTCUSDT")
-        if btc_cfg["venue"] == "BINANCE" and btc_cfg["price_precision"] == 2:
-            print("✓ Verification: Tier 1 Crypto precision boundaries verified successfully.")
+        sol_meta = asset_registry.get_asset("SOLUSDT")
+        if sol_meta["venue"] == "BINANCE" and sol_meta["volume_precision"] == 3:
+            print("✓ Verification: Persistent storage layer decimal bounds mapped without row loss.")
         else:
-            print("❌ Assertion Failure: Crypto mapping profiles corrupted.")
+            print("❌ Assertion Failure: Asset data row structural contents corrupted.")
             test_failed = True
-    except Exception as e:
-        print(f"❌ Check Failure: Raised mapping configuration lookup error: {str(e)}")
+    except Exception as err:
+        print(f"❌ Check Failure: Relational mapping query generated exception tracker errors: {str(err)}")
         test_failed = True
 
-    # Check 3: Verify classification sorting logic maps for Forex Majors
-    fx_list = asset_registry.get_watchlist_by_class("FOREX")
-    if len(fx_list) == 5 and "EURUSD" in fx_list and "USDCAD" in fx_list:
-        print("✓ Verification: Tier 2 Forex currency classification array sorted without loss.")
+    # Check 3: Verify asset class tracking array filter boundaries
+    metals = asset_registry.get_watchlist_by_class("METALS")
+    if len(metals) == 2 and "XAUUSD" in metals and "XAGUSD" in metals:
+        print("✓ Verification: Partitioned classification lookups returning exact matches.")
     else:
-        print(f"❌ Assertion Failure: Category isolation filtering returned altered metrics: {fx_list}")
+        print(f"❌ Assertion Failure: Category parameters array extraction corrupted: {metals}")
         test_failed = True
 
-    # Check 4: Enforce error handling boundary validation checks
-    if not asset_registry.verify_asset_exists("INVALID_TICKER"):
-        print("✓ Verification: Safety validation filter caught unknown foreign asset requests safely.")
+    # Check 4: Assert relational validation firewall intercepts foreign tickers safely
+    if not asset_registry.verify_asset_exists("UNKNOWN_INDEX"):
+        print("✓ Verification: Persistent verification filter blocked untracked alien instrument calls.")
     else:
-        print("❌ Assertion Failure: Unknown asset passed structural boundary constraints checks.")
+        print("❌ Assertion Failure: Operational database failed to isolate unknown ticker fields.")
         test_failed = True
 
     duration_ms = (time.perf_counter() - start_time) * 1000
     print("------------------------------------------------------------------")
-    print(f"Registry Lookup Execution Latency: {duration_ms:.4f} ms")
+    print(f"Persistent Registry Sweep Latency: {duration_ms:.4f} ms")
     print("------------------------------------------------------------------")
 
     if test_failed:
@@ -62,4 +63,4 @@ def run_regression_checks():
         sys.exit(0)
 
 if __name__ == "__main__":
-    run_regression_checks()
+    run_persistent_registry_regression()
