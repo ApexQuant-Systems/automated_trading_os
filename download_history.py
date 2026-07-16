@@ -117,7 +117,7 @@ def run_data_collection_loop(target_asset_class: str = None, max_jobs_to_process
 
         # C. Stream verified records to the partitioned database warehouse
         print("  └─ Streaming canonical matrices to relational storage partitions...")
-        rows_committed = warehouse_loader.load_crypto_candles(symbol, job_key, candles)
+        rows_committed = warehouse_loader.load_crypto_candles(symbol, tf, job_key, candles)
         
         # D. Write data manifest updates and advance task state to RESEARCH_READY
         with db_manager.metadata_db() as conn:
