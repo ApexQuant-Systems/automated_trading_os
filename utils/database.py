@@ -1,85 +1,116 @@
 # Component Manifest Contract Header
-__module_name__ = "relational_persistence_layer"
-__build_version__ = "4.0.0-stable"
-__spec_contract_hash__ = "0x04_db_lean"
-__regression_suite_hash__ = "0x04_db_verify"
+__module_name__ = "partitioned_persistence_engine"
+__build_version__ = "0.3.2-stable"
+__spec_contract_hash__ = "0x102_database_partitioned"
+__regression_suite_hash__ = "0x102_database_verify_partitioned"
 
-import sqlite3
 import os
+import sqlite3
+import datetime
 from contextlib import contextmanager
-from logs.logger import logger
+from typing import Generator
 
-DB_PATH = "apex_production.db"
+class RelationalPersistenceManager:
+    """Agnostic thread-safe storage core managing partitioned time-series price data warehouses."""
 
-class DatabaseManager:
-    """Manages SQLite transactions using clean, localized session context scopes."""
-    def __init__(self, db_path: str = DB_PATH):
+    def __init__(self, db_path: str = "market_data/warehouse/price_warehouse.db"):
         self.db_path = db_path
-        self.initialize_schema()
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self.initialize_core_schemas()
 
     @contextmanager
-    def connection(self):
-        """Provides a safe database connection scope, ensuring atomic commits or rollbacks."""
-        conn = sqlite3.connect(self.db_path)
+    def connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager providing thread-safe WAL transactions with strict isolation controls."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA journal_mode = WAL;")  # High-throughput asynchronous write performance
         conn.row_factory = sqlite3.Row
         try:
             yield conn
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error(f"Database transaction failure. State rolled back safely.", e)
             raise e
         finally:
             conn.close()
 
-    def initialize_schema(self):
-        """Instantiates the simplified, decoupled tables required to support development."""
+    def initialize_core_schemas(self):
+        """Builds standardized partitioned infrastructure tables matching the frozen asset classes."""
         with self.connection() as conn:
-            # 1. Market Data Storage (Composite primary key handles duplication protection)
+            # 1. Automated Schema Migration Audit Control Table
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS market_data (
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL,
+                    checksum TEXT NOT NULL
+                );
+            """)
+
+            # 2. Partitioned Historical Price Repositories
+            for asset_class in ["crypto", "forex", "metal", "index"]:
+                conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {asset_class}_candles (
+                        timestamp INTEGER NOT NULL,
+                        symbol TEXT NOT NULL,
+                        open REAL NOT NULL,
+                        high REAL NOT NULL,
+                        low REAL NOT NULL,
+                        close REAL NOT NULL,
+                        volume REAL NOT NULL,
+                        quote_volume REAL DEFAULT 0.0,
+                        trade_count INTEGER DEFAULT 0,
+                        dataset_id TEXT NOT NULL,
+                        PRIMARY KEY (symbol, timestamp)
+                    );
+                """)
+                # Accelerate time-series aggregation sweeps
+                conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{asset_class}_chrono ON {asset_class}_candles (symbol, timestamp);")
+
+            # 3. Normalized Centralized In-Memory Feature Store Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS feature_store (
                     symbol TEXT NOT NULL,
                     timeframe TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
-                    open REAL NOT NULL,
-                    high REAL NOT NULL,
-                    low REAL NOT NULL,
-                    close REAL NOT NULL,
-                    volume REAL NOT NULL,
-                    PRIMARY KEY (symbol, timeframe, timestamp)
-                )
+                    feature_type TEXT NOT NULL,
+                    feature_key TEXT NOT NULL,
+                    feature_value TEXT NOT NULL,
+                    PRIMARY KEY (symbol, timeframe, timestamp, feature_type, feature_key)
+                );
             """)
 
-            # 2. Closed Loop Execution Trades Tracker
+            # 4. Advanced Telemetry Staged Trade Journal Ledger
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS trades (
-                    id TEXT PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS trade_journal (
+                    trade_id TEXT PRIMARY KEY,
+                    strategy_id TEXT NOT NULL,
+                    setup_score REAL NOT NULL,
+                    entry_timestamp INTEGER NOT NULL,
+                    exit_timestamp INTEGER,
                     symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
                     direction TEXT NOT NULL,
                     entry_price REAL NOT NULL,
                     stop_loss REAL NOT NULL,
                     take_profit REAL NOT NULL,
-                    exit_price REAL,
-                    realized_pnl REAL,
-                    status TEXT NOT NULL
-                )
-            """)
-
-            # 3. System Metadata Table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS system_metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            """)
-
-            # Versioning seed injection
-            conn.execute("""
-                INSERT OR IGNORE INTO system_metadata (key, value, updated_at)
-                VALUES ('schema_version', '4.0.0', datetime('now'))
+                    risk_amount REAL NOT NULL,
+                    position_size REAL NOT NULL,
+                    spread REAL NOT NULL,
+                    slippage REAL DEFAULT 0.0,
+                    commission REAL NOT NULL,
+                    swap REAL DEFAULT 0.0,
+                    expected_rr REAL NOT NULL,
+                    actual_rr REAL DEFAULT 0.0,
+                    realized_pnl REAL DEFAULT 0.0,
+                    execution_latency REAL NOT NULL,
+                    exit_reason TEXT
+                );
             """)
             
-        logger.info("Database schemas securely mapped and validated.")
+            # Seed primary version tracking records safely
+            conn.execute("""
+                INSERT OR IGNORE INTO schema_version (version, applied_at, checksum)
+                VALUES (?, ?, ?)
+            """, (1, datetime.datetime.utcnow().isoformat(), __spec_contract_hash__))
 
-db = DatabaseManager()
+db = RelationalPersistenceManager()
