@@ -151,4 +151,4 @@ def run_data_collection_loop(target_asset_class: str = None, max_jobs_to_process
 
 if __name__ == "__main__":
     # Process the active downloaded files through the transformation pipeline
-    run_data_collection_loop(target_asset_class="CRYPTO", max_jobs_to_process=3)
+    run_data_collection_loop(target_asset_class=None, max_jobs_to_process=4)
