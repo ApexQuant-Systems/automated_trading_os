@@ -1,5 +1,14 @@
+# Environments
+venv/
+env/
 __pycache__/
-*.log
+*.pyc
+
+# Database & Raw Data
 *.db
-.env
-.vscode/
+*.sqlite3
+market_data/raw/
+*.zip
+
+# OS Files
+.DS_Store
