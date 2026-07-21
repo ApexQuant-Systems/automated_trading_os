@@ -1,7 +1,7 @@
 # Component Manifest Contract Header
 __module_name__ = "market_data.structure_engine"
-__specification_version__ = "v1.0-frozen"
-__implementation_version__ = "v1.0-stateless-core"
+__specification_version__ = "v1.1-fixed"
+__implementation_version__ = "v1.1-stateless-core"
 
 from typing import List, Dict, Any, Literal, TypedDict, Optional
 
@@ -22,7 +22,7 @@ class TrendTelemetry(TypedDict):
     evidence_chain: List[str]
 
 class DeterministicStructureEngine:
-    """Stateless multi-tier structural breakout engine utilizing chronological Dealing Range anchors."""
+    """Stateless multi-tier structural breakout engine utilizing explicit chronological anchors."""
 
     def classify_swings(self, swings: List[Dict[str, Any]], config: Dict[str, Any], timeframe: str) -> List[Dict[str, Any]]:
         """Module 2.2.1: Classifies raw geometric swing facts into major external or minor internal structures."""
@@ -33,7 +33,6 @@ class DeterministicStructureEngine:
         classified_swings = []
         for s in swings:
             updated_swing = s.copy()
-            # If the fact matches or exceeds the primary macro timeframe lookback window, it is External Major
             if s["window_meta"]["configured_n"] >= macro_n:
                 updated_swing["status"] = "ACTIVE_RANGE_LIMIT"
                 updated_swing["classification"] = "EXTERNAL_MAJOR"
@@ -50,7 +49,7 @@ class DeterministicStructureEngine:
         classified_swings: List[Dict[str, Any]],
         config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Module 2.2.2 & 2.2.3: Detects breakouts via candle body closes and outputs deterministic trend status."""
+        """Module 2.2.2 & 2.2.3: Detects breakouts via candle body closes with look-ahead bias shields."""
         epsilon = config["market_ontology_parameters"]["floating_point_epsilon"]
         
         events: List[StructuralEventRecord] = []
@@ -69,66 +68,70 @@ class DeterministicStructureEngine:
                 }
             }
 
-        # Setup runtime state parameters tracking the dynamic dealing range context
         current_regime: Literal["BULLISH", "BEARISH", "RANGE", "UNKNOWN"] = "UNKNOWN"
         last_event_type: Literal["BOS", "MSS", "CHOCH", "INITIALIZATION"] = "INITIALIZATION"
         last_event_id = "INIT"
         
-        # Chronological range anchors
+        # Explicitly decoupled structural coordinate anchors
         active_high: Optional[float] = None
-        active_low: Optional[float] = None
+        active_high_ts: Optional[int] = None
         broken_high_id = ""
+        
+        active_low: Optional[float] = None
+        active_low_ts: Optional[int] = None
         broken_low_id = ""
         
-        # Track historical structural extreme references for CHOCH calculation loops
-        highest_high_peak_ob = -1.0
-        lowest_low_trough_ob = float('inf')
+        # Track the active threshold ceiling/floor during live expansion runs
+        expansion_peak: Optional[float] = None
+        expansion_trough: Optional[float] = None
         
-        # Sort swings by timestamp to step chronologically through data blocks
         sorted_swings = sorted(classified_swings, key=lambda x: x["timestamp"])
         
-        # Establish primitive baseline boundaries from initial discovered major swings
         major_highs = [s for s in sorted_swings if s["classification"] == "EXTERNAL_MAJOR" and s["swing_type"] == "HIGH"]
         major_lows = [s for s in sorted_swings if s["classification"] == "EXTERNAL_MAJOR" and s["swing_type"] == "LOW"]
         
         if major_highs:
             active_high = major_highs[0]["price"]
+            active_high_ts = major_highs[0]["timestamp"]
             broken_high_id = major_highs[0]["swing_id"]
+            expansion_peak = active_high
         if major_lows:
             active_low = major_lows[0]["price"]
+            active_low_ts = major_lows[0]["timestamp"]
             broken_low_id = major_lows[0]["swing_id"]
+            expansion_trough = active_low
             
-        if active_high and active_low:
+        if active_high is not None and active_low is not None:
             current_regime = "RANGE"
             evidence.append(f"Initial range baseline locked between Low={active_low} and High={active_high}")
 
-        # Map candles by timestamp for high-speed chronological coordinate checking
         candle_map = {c["timestamp"]: c for c in candles}
         sorted_timestamps = sorted(list(candle_map.keys()))
         
-        # Track internal shifts
         last_minor_high: Optional[float] = None
         last_minor_low: Optional[float] = None
-        active_mss_id: Optional[str] = None
 
-        # Chronological execution sweep loop
         for ts in sorted_timestamps:
             candle = candle_map[ts]
             c_close = candle["close"]
             
-            # Check if any new swing factor was confirmed at this exact timestamp (Look-ahead protection gate)
+            # Look-ahead confirmation gate routing
             current_confirmed_swings = [s for s in sorted_swings if s["confirmed_at_ts"] == ts]
             for cs in current_confirmed_swings:
                 if cs["classification"] == "EXTERNAL_MAJOR":
                     if cs["swing_type"] == "HIGH":
                         active_high = cs["price"]
+                        active_high_ts = cs["timestamp"]
                         broken_high_id = cs["swing_id"]
-                        highest_high_peak_ob = max(highest_high_peak_ob, cs["price"])
+                        if current_regime != "BULLISH":
+                            expansion_peak = active_high
                         evidence.append(f"[{ts}] New Major Range High Anchor logged: {active_high}")
                     else:
                         active_low = cs["price"]
+                        active_low_ts = cs["timestamp"]
                         broken_low_id = cs["swing_id"]
-                        lowest_low_trough_ob = min(lowest_low_trough_ob, cs["price"])
+                        if current_regime != "BEARISH":
+                            expansion_trough = active_low
                         evidence.append(f"[{ts}] New Major Range Low Anchor logged: {active_low}")
                 else:
                     if cs["swing_type"] == "HIGH":
@@ -136,9 +139,9 @@ class DeterministicStructureEngine:
                     else:
                         last_minor_low = cs["price"]
 
-            # Evaluate structural breakouts against boundary anchors
-            if current_regime in ["BULLISH", "RANGE"] and active_high and c_close - active_high > epsilon:
-                # Check for structural trend reversal condition (CHOCH) or expansion (BOS)
+            # Evaluate structural breakouts against explicit boundary targets
+            target_high = expansion_peak if current_regime == "BULLISH" else active_high
+            if current_regime in ["BULLISH", "RANGE"] and target_high is not None and c_close - target_high > epsilon:
                 ev_type: Literal["BOS", "CHOCH"] = "BOS" if current_regime == "BULLISH" else "CHOCH"
                 current_regime = "BULLISH"
                 last_event_type = ev_type
@@ -157,48 +160,52 @@ class DeterministicStructureEngine:
                 
                 evidence.append(f"[{ts}] Confirmed Bullish {ev_type} Body Close Breakout clear at price: {c_close}")
                 
-                # Dynamic Dealing Range Reset: Fluid high hunt initiated, recalculate baseline Low coordinate
-                # Find minimum low between broken swing timestamp and current execution mark
-                range_candles = [c for c in candles if cs["timestamp"] <= c["timestamp"] <= ts]
-                if range_candles:
-                    active_low = min([c["low"] for c in range_candles])
-                active_high = None  # Liquidated upper bound boundary until next confirmation block
+                # Dynamic Dealing Range Low Reset using fixed anchor tracking bounds
+                if active_high_ts is not None:
+                    range_candles = [c for c in candles if active_high_ts <= c["timestamp"] <= ts]
+                    if range_candles:
+                        active_low = min([c["low"] for c in range_candles])
                 
-            elif current_regime in ["BEARISH", "RANGE"] and active_low and active_low - c_close > epsilon:
-                ev_type = "BOS" if current_regime == "BEARISH" else "CHOCH"
-                current_regime = "BEARISH"
-                last_event_type = ev_type
+                expansion_peak = c_close  # Shift the expansion trail ceiling up dynamically
+                active_high = None
+
+            elif current_regime in ["BEARISH", "RANGE"] and expansion_trough is not None and active_low is not None and active_low - c_close > epsilon:
+                target_low = expansion_trough if current_regime == "BEARISH" else active_low
+                if c_close < target_low - epsilon:
+                    ev_type = "BOS" if current_regime == "BEARISH" else "CHOCH"
+                    current_regime = "BEARISH"
+                    last_event_type = ev_type
+                    
+                    evt_id = f"{symbol.upper()}-{timeframe.upper()}-{ev_type}-{ts}"
+                    last_event_id = evt_id
+                    
+                    events.append({
+                        "event_id": evt_id,
+                        "event_type": ev_type,
+                        "direction": "BEARISH",
+                        "trigger_timestamp": ts,
+                        "broken_swing_id": broken_low_id,
+                        "breakout_price": c_close
+                    })
+                    
+                    evidence.append(f"[{ts}] Confirmed Bearish {ev_type} Body Close Breakout clear at price: {c_close}")
+                    
+                    if active_low_ts is not None:
+                        range_candles = [c for c in candles if active_low_ts <= c["timestamp"] <= ts]
+                        if range_candles:
+                            active_high = max([c["high"] for c in range_candles])
+                    
+                    expansion_trough = c_close
+                    active_low = None
                 
-                evt_id = f"{symbol.upper()}-{timeframe.upper()}-{ev_type}-{ts}"
-                last_event_id = evt_id
-                
-                events.append({
-                    "event_id": evt_id,
-                    "event_type": ev_type,
-                    "direction": "BEARISH",
-                    "trigger_timestamp": ts,
-                    "broken_swing_id": broken_low_id,
-                    "breakout_price": c_close
-                })
-                
-                evidence.append(f"[{ts}] Confirmed Bearish {ev_type} Body Close Breakout clear at price: {c_close}")
-                
-                # Recalculate range metrics
-                range_candles = [c for c in candles if cs["timestamp"] <= c["timestamp"] <= ts]
-                if range_candles:
-                    active_high = max([c["high"] for c in range_candles])
-                active_low = None
-                
-            # Early Momentum Market Structure Shift (MSS) verification engine tracking
-            elif current_regime == "BEARISH" and last_minor_high and c_close - last_minor_high > epsilon:
+            # Early Momentum Market Structure Shift (MSS) indicators
+            elif current_regime == "BEARISH" and last_minor_high is not None and c_close - last_minor_high > epsilon:
                 evt_id = f"{symbol.upper()}-{timeframe.upper()}-MSS-{ts}"
-                active_mss_id = evt_id
                 evidence.append(f"[{ts}] Early Momentum Bullish MSS alert triggered at price {c_close}")
-                last_minor_high = None # Expire minor target after breakout clear
+                last_minor_high = None
                 
-            elif current_regime == "BULLISH" and last_minor_low and last_minor_low - c_close > epsilon:
+            elif current_regime == "BULLISH" and last_minor_low is not None and last_minor_low - c_close > epsilon:
                 evt_id = f"{symbol.upper()}-{timeframe.upper()}-MSS-{ts}"
-                active_mss_id = evt_id
                 evidence.append(f"[{ts}] Early Momentum Bearish MSS alert triggered at price {c_close}")
                 last_minor_low = None
 
@@ -210,6 +217,6 @@ class DeterministicStructureEngine:
                 "current_regime": current_regime,
                 "last_event_type": last_event_type,
                 "last_event_id": last_event_id,
-                "evidence_chain": evidence[-5:]  # Return the five most recent factual context lines
+                "evidence_chain": evidence[-5:]
             }
         }

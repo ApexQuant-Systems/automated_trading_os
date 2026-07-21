@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apex_quant_os"
+version = "1.0.0"
+description = "APEX Quant OS - Institutional Multi-Asset Trading System"
+authors = [{ name = "Naresh" }]
+dependencies = [
+    "numpy",
+    "matplotlib",
+]
+
+[tool.setuptools.packages.find]
+include = ["market_state*", "market_data*"]

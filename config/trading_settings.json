@@ -1,0 +1,20 @@
+{
+  "system_metadata": {
+    "version": "1.0.0",
+    "environment": "production",
+    "engine_version": "v1.0-frozen-spec"
+  },
+  "market_ontology_parameters": {
+    "floating_point_epsilon": 1e-8,
+    "missing_data_threshold_multiplier": 2.5,
+    "tie_breaker_mode": "DISPLACEMENT",
+    "timeframe_swing_windows": {
+      "15m": 2,
+      "1h": 2,
+      "4h": 3,
+      "1d": 5,
+      "1w": 5,
+      "1mo": 7
+    }
+  }
+}
