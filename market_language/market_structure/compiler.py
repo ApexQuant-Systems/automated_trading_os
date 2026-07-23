@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 12: Structure Compiler (v3.2 Institutional)
-Executes single-timeframe dual-layer pipeline, causal anchors, and phase classification.
+APEX Quant OS - Engine 12: Structure Compiler (v3.5 Dynamic Version)
+Executes dual-layer pipeline, causal anchors, and phase classification.
 """
 
 import time
@@ -65,7 +65,7 @@ class StructureCompiler:
         # Engine 1: Detect External & Internal Swings
         external_swings, internal_swings = SwingEngine.detect_swings(candles, self.policy)
 
-        # Engine 2: Geometric Relationships (HH, HL, LH, LL)
+        # Engine 2: Geometric Relationships
         external_swings = RelationshipEngine.evaluate_relationships(external_swings, self.policy)
 
         # Retrieve Current Trend
@@ -110,7 +110,7 @@ class StructureCompiler:
         execution_time_ms = (time.perf_counter() - start_time) * 1000.0
 
         metadata = EngineMetadata(
-            version="3.2.0",
+            version=self.policy.version, # Read dynamically from policy
             processed_at_timestamp=candles[-1].timestamp if candles else 0,
             processing_time_ms=round(execution_time_ms, 2),
             candle_count=len(candles),

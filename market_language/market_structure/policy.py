@@ -11,9 +11,8 @@ from typing import Literal
 class MarketStructurePolicy:
     """
     Immutable configuration policy governing all structural detection algorithms.
-    Swapping this object allows Monte Carlo research without altering engine mechanics.
     """
-    version: str = "2.0.0"
+    version: str = "3.5.0"
     
     # Extrema Extraction Policy
     extrema_source: Literal["WICKS", "BODIES"] = "WICKS"
@@ -29,7 +28,7 @@ class MarketStructurePolicy:
     inside_bar_policy: Literal["MERGE", "IGNORE", "COUNT"] = "MERGE"
     
     # Equal Price Tolerance (Percentage)
-    equal_price_tolerance_pct: float = 0.0005  # 0.05%
+    equal_price_tolerance_pct: float = 0.0005
     
-    # Minimum swing depth required relative to ATR (Institutional Noise Filter)
+    # Minimum swing depth required relative to ATR
     atr_filter_multiplier: float = 1.5

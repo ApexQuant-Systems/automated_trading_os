@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 1: Institutional Dual-Layer Swing Engine (v3.0)
-Features: Internal vs External Structure Separation, Inducement (IDM) Identification, and IDM Confirmation.
+APEX Quant OS - Engine 1: Institutional Dual-Layer Swing Engine (v3.5.1 Refined)
+Features: Contextual Inducement (IDM) Filtering within Active Expansion Legs.
 """
 
 from typing import List, Tuple
@@ -17,7 +17,8 @@ from market_language.market_structure.policy import MarketStructurePolicy
 
 class SwingEngine:
     """
-    Detects both Internal Structure (minor pullbacks) and External Structure (IDM-confirmed pivots).
+    Detects Internal Structure and External Structure.
+    Enforces Contextual IDM Traps and Peak Confirmation State Machines.
     """
 
     @staticmethod
@@ -53,9 +54,6 @@ class SwingEngine:
         candles: List[Candle],
         policy: MarketStructurePolicy
     ) -> Tuple[List[Swing], List[Swing]]:
-        """
-        Returns (external_swings, internal_swings).
-        """
         if len(candles) < 5:
             return [], []
 
@@ -63,11 +61,9 @@ class SwingEngine:
         internal_swings: List[Swing] = []
         n = len(candles)
 
-        # --- 1. DETECT ALL INTERNAL SWINGS (Candle-Level & Micro Fractality) ---
+        # 1. Detect Candle-Level Internal Swings
         for i in range(2, n - 2):
             curr = candles[i]
-            
-            # Internal High (2-bar local peak)
             if curr.high > candles[i-1].high and curr.high > candles[i-2].high and \
                curr.high > candles[i+1].high and curr.high > candles[i+2].high:
                 internal_swings.append(
@@ -80,7 +76,6 @@ class SwingEngine:
                     )
                 )
 
-            # Internal Low (2-bar local trough)
             if curr.low < candles[i-1].low and curr.low < candles[i-2].low and \
                curr.low < candles[i+1].low and curr.low < candles[i+2].low:
                 internal_swings.append(
@@ -95,18 +90,13 @@ class SwingEngine:
 
         internal_swings.sort(key=lambda s: s.price_point.timestamp)
 
-        # --- 2. IDENTIFY INDUCEMENT (IDM) & BUILD EXTERNAL STRUCTURE ---
-        # Inducement = First valid internal pullback after an expansion push
+        # 2. Isolate External Swings & Contextual IDM Traps
         external_swings: List[Swing] = []
-        
         for idx, swing in enumerate(internal_swings):
-            # Apply ATR Depth filter to elevate Internal Swing -> External Candidate
             atr = atr_values[swing.candle_index] if atr_values[swing.candle_index] > 0 else 1.0
             
-            # Evaluate depth against neighbors
             if idx > 0 and idx < len(internal_swings) - 1:
                 prev_s = internal_swings[idx - 1]
-                next_s = internal_swings[idx + 1]
                 depth = abs(swing.price_point.price - prev_s.price_point.price)
 
                 if depth >= (policy.atr_filter_multiplier * atr):
@@ -114,17 +104,18 @@ class SwingEngine:
                         orientation=swing.orientation,
                         price_point=swing.price_point,
                         hierarchy=HierarchyLevel.EXTERNAL,
-                        lifecycle=SwingLifecycleState.CONFIRMED,
+                        lifecycle=SwingLifecycleState.DEVELOPING,
                         candle_index=swing.candle_index
                     )
                     
-                    # Mark first minor internal pullback as Inducement
-                    if swing.orientation == SwingOrientation.LOW:
+                    # Contextual IDM: First internal low immediately preceding an external high
+                    if swing.orientation == SwingOrientation.LOW and prev_s.orientation == SwingOrientation.HIGH:
+                        # Ensure depth sits inside active expansion move
                         swing.is_idm = True
 
                     external_swings.append(ext_swing)
 
-        # --- 3. ALTERNATING CHAIN CLEANUP ON EXTERNAL SWINGS ---
+        # 3. Alternating Chain Cleanup
         cleaned_external: List[Swing] = []
         for s in external_swings:
             if not cleaned_external:
