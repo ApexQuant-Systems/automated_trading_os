@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 12: Structure Compiler (v3.0 Dual-Layer)
-Executes dual-layer internal/external structure pipeline and outputs MarketStructureState.
+APEX Quant OS - Engine 12: Structure Compiler (v3.2 Institutional)
+Executes single-timeframe dual-layer pipeline, causal anchors, and phase classification.
 """
 
 import time
@@ -23,6 +23,7 @@ from market_language.market_structure.models import (
     Swing,
     TrendState,
 )
+from market_language.market_structure.phase_engine import PhaseEngine, MarketPhase
 from market_language.market_structure.policy import MarketStructurePolicy
 from market_language.market_structure.pullback_engine import PullbackEngine, PullbackStructure
 from market_language.market_structure.quality_engine import QualityEngine, StructuralQuality
@@ -42,6 +43,7 @@ class MarketStructureState:
     pullback: PullbackStructure
     quality: StructuralQuality
     metrics: StructuralMetrics
+    market_phase: MarketPhase
     recent_events: Tuple[StructuralEvent, ...]
     external_swings: Tuple[Swing, ...]
     internal_swings: Tuple[Swing, ...]
@@ -63,40 +65,44 @@ class StructureCompiler:
         # Engine 1: Detect External & Internal Swings
         external_swings, internal_swings = SwingEngine.detect_swings(candles, self.policy)
 
-        # Engine 2: Relationships
+        # Engine 2: Geometric Relationships (HH, HL, LH, LL)
         external_swings = RelationshipEngine.evaluate_relationships(external_swings, self.policy)
 
-        # Retrieve Trend
+        # Retrieve Current Trend
         current_trend = self.memory.trend_history[-1].direction if self.memory.trend_history else TrendState().direction
 
-        # Engine 3: Events
+        # Engine 3: Events (Displacement + IDM Sweeps)
         events, external_swings, internal_swings = EventEngine.detect_events(
             candles, external_swings, internal_swings, current_trend, self.policy
         )
 
-        # Engine 4: Trend
+        # Engine 4: Trend Direction & Maturity
         trend = TrendEngine.update_trend(events, self.memory.trend_history[-1] if self.memory.trend_history else None)
 
-        # Engine 5: Legs
+        # Engine 5: Structural Legs
         legs = LegEngine.construct_legs(external_swings, trend.direction)
 
-        # Engine 6: Anchors
+        # Engine 6: Causal Anchors
         anchors = AnchorEngine.derive_anchors(external_swings, events, trend.direction)
 
-        # Engine 7: Dealing Range
+        # Engine 7: Dealing Range & Boundaries
         dealing_range = BoundaryEngine.compute_dealing_range(anchors)
 
-        # Engine 8: Pullback
+        # Engine 8: Pullback Structure
         active_leg = legs[-1] if legs else None
         pullback = PullbackEngine.evaluate_pullback(candles, active_leg, dealing_range, trend.direction)
 
-        # Engine 9: Quality
+        # Engine 9: Quality & Efficiency
         quality = QualityEngine.evaluate_quality(candles, legs)
 
-        # Engine 10: Metrics
+        # Engine 10: Quantitative Metrics
         metrics = MetricsEngine.compute_metrics(external_swings, events, legs)
 
-        # Engine 11: Validate
+        # Engine 13: Market Phase Classifier
+        latest_price = candles[-1].close if candles else 0.0
+        market_phase = PhaseEngine.classify_phase(events, active_leg, dealing_range, latest_price)
+
+        # Engine 11: Firewall Validation
         is_valid, validation_errors = StructureValidator.validate_state(trend, anchors, dealing_range)
         if not is_valid:
             raise ValueError(f"MarketStructureState validation failed: {validation_errors}")
@@ -104,7 +110,7 @@ class StructureCompiler:
         execution_time_ms = (time.perf_counter() - start_time) * 1000.0
 
         metadata = EngineMetadata(
-            version="3.0.0",
+            version="3.2.0",
             processed_at_timestamp=candles[-1].timestamp if candles else 0,
             processing_time_ms=round(execution_time_ms, 2),
             candle_count=len(candles),
@@ -121,6 +127,7 @@ class StructureCompiler:
             pullback=pullback,
             quality=quality,
             metrics=metrics,
+            market_phase=market_phase,
             recent_events=tuple(events),
             external_swings=tuple(external_swings),
             internal_swings=tuple(internal_swings)

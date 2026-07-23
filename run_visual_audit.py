@@ -1,5 +1,5 @@
 """
-APEX Quant OS - Dual-Layer Visual Backtest Execution (v3.0)
+APEX Quant OS - Dual-Layer Visual Backtest Execution (v3.2)
 Processes historical candles and generates a dual-layer structure chart image for visual verification.
 """
 
@@ -38,10 +38,12 @@ def run_audit():
     chart_path = StructureVisualizer.plot_structure(candles, state, output_filename="btc_structure_audit.png")
 
     print(f"✅ Visual Chart Generated Successfully: {chart_path}")
+    print(f"   ├── Engine Version: {state.metadata.version}")
+    print(f"   ├── Market Phase: {state.market_phase.value}")
+    print(f"   ├── Active Trend: {state.trend.direction.value} ({state.trend.maturity.value})")
     print(f"   ├── External Swings Rendered: {len(state.external_swings)}")
     print(f"   ├── Internal Swings Rendered: {len(state.internal_swings)}")
-    print(f"   ├── Events Rendered: {len(state.recent_events)}")
-    print(f"   └── Current Trend: {state.trend.direction.value}")
+    print(f"   └── Events Rendered: {len(state.recent_events)}")
     print("==================================================================")
 
 

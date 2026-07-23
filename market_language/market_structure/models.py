@@ -1,12 +1,12 @@
 """
-APEX Quant OS - Market Structure Domain Models (v3.0 Institutional)
-Level 0 Primitives, Dual-Layer Objects (External/Internal), Events, and States.
+APEX Quant OS - Market Structure Domain Models (v3.1 Frozen Contract)
+Level 0 Primitives, Dual-Layer Objects, Events, States, Unique IDs, and Backward Compatibility.
 """
 
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 
 # ============================================================================
@@ -45,13 +45,13 @@ class SwingLifecycleState(str, Enum):
 
 
 class EventType(str, Enum):
-    # External Structural Events (Major Trend Breaks)
+    # External Structural Events
     EXTERNAL_BOS_BULLISH = "EXTERNAL_BOS_BULLISH"
     EXTERNAL_BOS_BEARISH = "EXTERNAL_BOS_BEARISH"
     EXTERNAL_CHOCH_BULLISH = "EXTERNAL_CHOCH_BULLISH"
     EXTERNAL_CHOCH_BEARISH = "EXTERNAL_CHOCH_BEARISH"
     
-    # Internal Structural Events (MSS / Minor Shifts)
+    # Internal Structural Events
     INTERNAL_BOS_BULLISH = "INTERNAL_BOS_BULLISH"
     INTERNAL_BOS_BEARISH = "INTERNAL_BOS_BEARISH"
     INTERNAL_CHOCH_BULLISH = "INTERNAL_CHOCH_BULLISH"
@@ -84,7 +84,7 @@ class LegType(str, Enum):
 
 
 # ============================================================================
-# LEVEL 0: PRIMITIVE TYPES
+# LEVEL 0: PRIMITIVES
 # ============================================================================
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ class Candle:
 
 
 # ============================================================================
-# OBJECTS (PERSISTENT PHYSICAL STRUCTURES)
+# DOMAIN OBJECTS
 # ============================================================================
 
 def generate_id(prefix: str) -> str:
@@ -148,6 +148,7 @@ class Swing:
     candle_index: int = 0
     is_idm: bool = False
     is_strong: bool = False
+    caused_displacement: bool = False
     confidence: float = 1.0
 
 
@@ -185,10 +186,6 @@ class DealingRange:
     hierarchy: HierarchyLevel = HierarchyLevel.EXTERNAL
 
 
-# ============================================================================
-# EVENTS & METADATA
-# ============================================================================
-
 @dataclass(frozen=True)
 class StructuralEvent:
     id: str = field(default_factory=lambda: generate_id("evt"))
@@ -210,7 +207,7 @@ class TrendState:
 
 @dataclass(frozen=True)
 class EngineMetadata:
-    version: str = "3.0.0"
+    version: str = "3.1.0"
     processed_at_timestamp: int = 0
     processing_time_ms: float = 0.0
     candle_count: int = 0
