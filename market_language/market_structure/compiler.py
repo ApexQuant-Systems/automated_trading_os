@@ -1,10 +1,10 @@
 """
-APEX Quant OS - Engine 12: Structure Compiler
-Master Orchestrator. Executes Pipeline (Engines 1-11), updates Memory, and outputs MarketStructureState.
+APEX Quant OS - Engine 12: Structure Compiler (v3.0 Dual-Layer)
+Executes dual-layer internal/external structure pipeline and outputs MarketStructureState.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from market_language.market_structure.anchor_engine import AnchorEngine
@@ -17,7 +17,6 @@ from market_language.market_structure.models import (
     Candle,
     DealingRange,
     EngineMetadata,
-    HierarchyLevel,
     StructuralAnchors,
     StructuralEvent,
     StructuralLeg,
@@ -35,9 +34,6 @@ from market_language.market_structure.validator import StructureValidator
 
 @dataclass(frozen=True)
 class MarketStructureState:
-    """
-    Immutable consolidated snapshot of Market Structure at a specific point in time.
-    """
     metadata: EngineMetadata
     trend: TrendState
     anchors: StructuralAnchors
@@ -47,15 +43,11 @@ class MarketStructureState:
     quality: StructuralQuality
     metrics: StructuralMetrics
     recent_events: Tuple[StructuralEvent, ...]
-    active_swings: Tuple[Swing, ...]
+    external_swings: Tuple[Swing, ...]
+    internal_swings: Tuple[Swing, ...]
 
 
 class StructureCompiler:
-    """
-    Master orchestrator for the Market Structure Engine.
-    Executes all sub-engines deterministically and returns validated MarketStructureState.
-    """
-
     def __init__(self, policy: Optional[MarketStructurePolicy] = None):
         self.policy = policy if policy is not None else MarketStructurePolicy()
         self.memory = StructureMemory()
@@ -68,61 +60,51 @@ class StructureCompiler:
     ) -> MarketStructureState:
         start_time = time.perf_counter()
 
-        # Engine 1: Detect Swings
-        swings = SwingEngine.detect_swings(candles, self.policy, HierarchyLevel.EXTERNAL)
+        # Engine 1: Detect External & Internal Swings
+        external_swings, internal_swings = SwingEngine.detect_swings(candles, self.policy)
 
-        # Engine 2: Evaluate Relationships (HH, HL, LH, LL)
-        swings = RelationshipEngine.evaluate_relationships(swings, self.policy)
+        # Engine 2: Relationships
+        external_swings = RelationshipEngine.evaluate_relationships(external_swings, self.policy)
 
-        # Retrieve current trend direction for event classification
+        # Retrieve Trend
         current_trend = self.memory.trend_history[-1].direction if self.memory.trend_history else TrendState().direction
 
-        # Engine 3: Detect Structural Events (BOS, CHOCH, MSS)
-        events, updated_swings = EventEngine.detect_events(candles, swings, current_trend, self.policy)
+        # Engine 3: Events
+        events, external_swings, internal_swings = EventEngine.detect_events(
+            candles, external_swings, internal_swings, current_trend, self.policy
+        )
 
-        # Engine 4: Update Trend State
+        # Engine 4: Trend
         trend = TrendEngine.update_trend(events, self.memory.trend_history[-1] if self.memory.trend_history else None)
 
-        # Engine 5: Construct Structural Legs
-        legs = LegEngine.construct_legs(updated_swings, trend.direction)
+        # Engine 5: Legs
+        legs = LegEngine.construct_legs(external_swings, trend.direction)
 
-        # Engine 6: Derive Anchors
-        anchors = AnchorEngine.derive_anchors(updated_swings, events, trend.direction)
+        # Engine 6: Anchors
+        anchors = AnchorEngine.derive_anchors(external_swings, events, trend.direction)
 
-        # Engine 7: Compute Dealing Range & Boundaries
+        # Engine 7: Dealing Range
         dealing_range = BoundaryEngine.compute_dealing_range(anchors)
 
-        # Engine 8: Evaluate Pullback Structure
+        # Engine 8: Pullback
         active_leg = legs[-1] if legs else None
         pullback = PullbackEngine.evaluate_pullback(candles, active_leg, dealing_range, trend.direction)
 
-        # Engine 9: Assess Quality
+        # Engine 9: Quality
         quality = QualityEngine.evaluate_quality(candles, legs)
 
-        # Engine 10: Compute Quantitative Metrics
-        metrics = MetricsEngine.compute_metrics(updated_swings, events, legs)
+        # Engine 10: Metrics
+        metrics = MetricsEngine.compute_metrics(external_swings, events, legs)
 
-        # Engine 11: Validate State via Firewall
+        # Engine 11: Validate
         is_valid, validation_errors = StructureValidator.validate_state(trend, anchors, dealing_range)
         if not is_valid:
             raise ValueError(f"MarketStructureState validation failed: {validation_errors}")
 
-        # Update Memory
-        for s in updated_swings:
-            self.memory.add_swing(s)
-        for e in events:
-            self.memory.add_event(e)
-        for l in legs:
-            self.memory.add_leg(l)
-        self.memory.update_trend(trend)
-        self.memory.update_anchors(anchors)
-        if dealing_range:
-            self.memory.update_boundary(dealing_range)
-
         execution_time_ms = (time.perf_counter() - start_time) * 1000.0
 
         metadata = EngineMetadata(
-            version=self.policy.version,
+            version="3.0.0",
             processed_at_timestamp=candles[-1].timestamp if candles else 0,
             processing_time_ms=round(execution_time_ms, 2),
             candle_count=len(candles),
@@ -140,5 +122,6 @@ class StructureCompiler:
             quality=quality,
             metrics=metrics,
             recent_events=tuple(events),
-            active_swings=tuple(updated_swings)
+            external_swings=tuple(external_swings),
+            internal_swings=tuple(internal_swings)
         )

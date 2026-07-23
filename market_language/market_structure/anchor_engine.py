@@ -1,5 +1,5 @@
 """
-APEX Quant OS - Engine 6: Institutional Anchor Engine (v2.1)
+APEX Quant OS - Engine 6: Institutional Anchor Engine (v3.0 Dual-Layer)
 Rules: Protected Anchors are strictly tied to the origin swing of confirmed BOS events.
 """
 
@@ -17,7 +17,7 @@ from market_language.market_structure.models import (
 
 class AnchorEngine:
     """
-    Identifies active protected structural levels (origin of BOS) vs weak liquidity targets.
+    Identifies active protected structural levels vs weak liquidity targets.
     """
 
     @staticmethod
@@ -42,28 +42,24 @@ class AnchorEngine:
         if external_lows:
             anchors.current_external_low = external_lows[-1]
 
-        # --- BULLISH TREND ANCHOR LOGIC ---
+        # --- BULLISH TREND ANCHORS ---
         if trend == TrendDirection.BULLISH:
-            # Protected Low = Lowest swing before the last bullish BOS
             if external_lows:
                 anchors.protected_low = external_lows[-1]
-                anchors.protected_low.lifecycle = SwingLifecycleState.PROTECTED
+                anchors.protected_low.lifecycle = SwingLifecycleState.PROTECTED_STRONG
             
-            # Weak High = High being targeted for liquidity expansion
             if external_highs:
                 anchors.weak_high = external_highs[-1]
-                anchors.weak_high.lifecycle = SwingLifecycleState.WEAK
+                anchors.weak_high.lifecycle = SwingLifecycleState.WEAK_TARGET
 
-        # --- BEARISH TREND ANCHOR LOGIC ---
+        # --- BEARISH TREND ANCHORS ---
         elif trend == TrendDirection.BEARISH:
-            # Protected High = Highest swing before the last bearish BOS
             if external_highs:
                 anchors.protected_high = external_highs[-1]
-                anchors.protected_high.lifecycle = SwingLifecycleState.PROTECTED
+                anchors.protected_high.lifecycle = SwingLifecycleState.PROTECTED_STRONG
             
-            # Weak Low = Low being targeted for liquidity expansion
             if external_lows:
                 anchors.weak_low = external_lows[-1]
-                anchors.weak_low.lifecycle = SwingLifecycleState.WEAK
+                anchors.weak_low.lifecycle = SwingLifecycleState.WEAK_TARGET
 
         return anchors

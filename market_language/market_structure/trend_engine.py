@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 4: Institutional Trend Engine (v2.1)
-Features: Reversal validation (CHOCH), Failure Swings (SMS), and Trend Maturity tracking.
+APEX Quant OS - Engine 4: Institutional Trend Engine (v3.0 Dual-Layer)
+Updates TrendState based on External and Internal Structural Events.
 """
 
 from typing import List, Optional
@@ -36,7 +36,7 @@ class TrendEngine:
 
         for event in events:
             # --- BULLISH CONTINUATION ---
-            if event.event_type == EventType.BOS_BULLISH:
+            if event.event_type in [EventType.EXTERNAL_BOS_BULLISH, EventType.INTERNAL_BOS_BULLISH]:
                 if state.direction == TrendDirection.BULLISH:
                     state.event_count += 1
                 else:
@@ -44,7 +44,7 @@ class TrendEngine:
                     state.event_count = 1
 
             # --- BEARISH CONTINUATION ---
-            elif event.event_type == EventType.BOS_BEARISH:
+            elif event.event_type in [EventType.EXTERNAL_BOS_BEARISH, EventType.INTERNAL_BOS_BEARISH]:
                 if state.direction == TrendDirection.BEARISH:
                     state.event_count += 1
                 else:
@@ -52,12 +52,12 @@ class TrendEngine:
                     state.event_count = 1
 
             # --- BULLISH REVERSAL (CHOCH) ---
-            elif event.event_type == EventType.CHOCH_BULLISH:
+            elif event.event_type in [EventType.EXTERNAL_CHOCH_BULLISH, EventType.INTERNAL_CHOCH_BULLISH]:
                 state.direction = TrendDirection.BULLISH
                 state.event_count = 1
 
             # --- BEARISH REVERSAL (CHOCH) ---
-            elif event.event_type == EventType.CHOCH_BEARISH:
+            elif event.event_type in [EventType.EXTERNAL_CHOCH_BEARISH, EventType.INTERNAL_CHOCH_BEARISH]:
                 state.direction = TrendDirection.BEARISH
                 state.event_count = 1
 
