@@ -1,0 +1,48 @@
+"""
+APEX Quant OS - Visual Backtest Execution
+Processes historical candles and generates a chart image for visual verification.
+"""
+
+from market_data.warehouse.replay import ReplayLoader
+from market_language.market_structure import Candle, MarketStructurePolicy, StructureCompiler
+from market_language.market_structure.visualizer import StructureVisualizer
+
+
+def run_audit():
+    print("==================================================================")
+    print("   APEX QUANT OS: GENERATING VISUAL STRUCTURE AUDIT CHART        ")
+    print("==================================================================")
+
+    # Fetch recent 150 BTC 4H candles for clear chart resolution
+    raw_candles = ReplayLoader.get_history(symbol="BTCUSDT", timeframe="4H", limit=150)
+    
+    candles = [
+        Candle(
+            timestamp=c["timestamp"],
+            open=c["open"],
+            high=c["high"],
+            low=c["low"],
+            close=c["close"],
+            volume=c["volume"]
+        )
+        for c in raw_candles
+    ]
+
+    policy = MarketStructurePolicy(fractal_left_bars=2, fractal_right_bars=2, break_confirmation="STRICT_BODY")
+    compiler = StructureCompiler(policy=policy)
+    
+    # Compile State
+    state = compiler.compile(candles, symbol="BTCUSDT", timeframe="4H")
+
+    # Render Visual Chart Image
+    chart_path = StructureVisualizer.plot_structure(candles, state, output_filename="btc_structure_audit.png")
+
+    print(f"✅ Visual Chart Generated Successfully: {chart_path}")
+    print(f"   ├── Swings Rendered: {len(state.active_swings)}")
+    print(f"   ├── Events Rendered: {len(state.recent_events)}")
+    print(f"   └── Current Trend: {state.trend.direction.value}")
+    print("==================================================================")
+
+
+if __name__ == "__main__":
+    run_audit()

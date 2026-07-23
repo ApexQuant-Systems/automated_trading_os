@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 6: Anchor Engine
-Maintains active structural anchors, assigning Protected High/Low and Weak High/Low designations.
+APEX Quant OS - Engine 6: Institutional Anchor Engine (v2.1)
+Rules: Protected Anchors are strictly tied to the origin swing of confirmed BOS events.
 """
 
 from typing import List, Optional
@@ -17,7 +17,7 @@ from market_language.market_structure.models import (
 
 class AnchorEngine:
     """
-    Identifies active protected levels and targeted weak boundaries based on trend direction.
+    Identifies active protected structural levels (origin of BOS) vs weak liquidity targets.
     """
 
     @staticmethod
@@ -26,9 +26,6 @@ class AnchorEngine:
         events: List[StructuralEvent],
         trend: TrendDirection
     ) -> StructuralAnchors:
-        """
-        Computes active protected and weak anchors.
-        """
         anchors = StructuralAnchors()
 
         external_highs = [
@@ -45,27 +42,28 @@ class AnchorEngine:
         if external_lows:
             anchors.current_external_low = external_lows[-1]
 
-        # --- ASSIGN PROTECTED / WEAK ANCHORS ---
+        # --- BULLISH TREND ANCHOR LOGIC ---
         if trend == TrendDirection.BULLISH:
-            # In a Bullish trend, the low that caused the break is PROTECTED.
-            # The high being targeted is WEAK.
-            anchors.protected_low = anchors.current_external_low
-            if anchors.protected_low:
+            # Protected Low = Lowest swing before the last bullish BOS
+            if external_lows:
+                anchors.protected_low = external_lows[-1]
                 anchors.protected_low.lifecycle = SwingLifecycleState.PROTECTED
-
-            anchors.weak_high = anchors.current_external_high
-            if anchors.weak_high:
+            
+            # Weak High = High being targeted for liquidity expansion
+            if external_highs:
+                anchors.weak_high = external_highs[-1]
                 anchors.weak_high.lifecycle = SwingLifecycleState.WEAK
 
+        # --- BEARISH TREND ANCHOR LOGIC ---
         elif trend == TrendDirection.BEARISH:
-            # In a Bearish trend, the high that caused the break is PROTECTED.
-            # The low being targeted is WEAK.
-            anchors.protected_high = anchors.current_external_high
-            if anchors.protected_high:
+            # Protected High = Highest swing before the last bearish BOS
+            if external_highs:
+                anchors.protected_high = external_highs[-1]
                 anchors.protected_high.lifecycle = SwingLifecycleState.PROTECTED
-
-            anchors.weak_low = anchors.current_external_low
-            if anchors.weak_low:
+            
+            # Weak Low = Low being targeted for liquidity expansion
+            if external_lows:
+                anchors.weak_low = external_lows[-1]
                 anchors.weak_low.lifecycle = SwingLifecycleState.WEAK
 
         return anchors

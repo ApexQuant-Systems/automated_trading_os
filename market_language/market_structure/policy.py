@@ -31,5 +31,5 @@ class MarketStructurePolicy:
     # Equal Price Tolerance (Percentage)
     equal_price_tolerance_pct: float = 0.0005  # 0.05%
     
-    # Minimum swing depth required relative to ATR
-    atr_filter_multiplier: float = 0.0
+    # Minimum swing depth required relative to ATR (Institutional Noise Filter)
+    atr_filter_multiplier: float = 1.5
