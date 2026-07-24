@@ -1,14 +1,20 @@
-# Environments
-venv/
-env/
+# Python artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+venv/
+.venv/
 
-# Database & Raw Data
-*.db
-*.sqlite3
-market_data/raw/
-*.zip
+# Binary chart artifacts & visual audits
+*.png
+*.jpg
+*.jpeg
 
-# OS Files
+# Runtime logs
+logs/
+*.log
+
+# Environment & IDE
+.vscode/
+.idea/
 .DS_Store
