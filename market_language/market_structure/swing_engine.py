@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 1: Institutional Dual-Layer Swing Engine (v3.5.3)
-Fixes: Boundary-aware swing depth evaluation for short unit-test datasets.
+APEX Quant OS - Engine 1: Institutional Dual-Layer Swing Engine (v3.5.4)
+Fixes: Adjacent opposite-orientation swing depth check for external promotion.
 """
 
 from typing import List, Tuple
@@ -61,10 +61,10 @@ class SwingEngine:
         internal_swings: List[Swing] = []
         n = len(candles)
 
-        # 1. Detect Candle-Level Internal Swings (Adapted for short unit-test windows)
         left = policy.fractal_left_bars
         right = policy.fractal_right_bars
 
+        # 1. Detect Candle-Level Internal Swings
         for i in range(left, n - right):
             curr = candles[i]
             
@@ -98,24 +98,27 @@ class SwingEngine:
 
         internal_swings.sort(key=lambda s: s.price_point.timestamp)
 
-        # 2. Promote Internal Swings to External Structure (Boundary-Aware)
+        # 2. Promote Internal Swings to External Structure
         external_swings: List[Swing] = []
         num_internal = len(internal_swings)
 
         for idx, swing in enumerate(internal_swings):
             atr = atr_values[swing.candle_index] if swing.candle_index < len(atr_values) and atr_values[swing.candle_index] > 0 else 1.0
             
-            # Boundary Depth Evaluation
-            if num_internal == 1:
-                depth = candles[swing.candle_index].range
-            elif idx == 0:
-                next_s = internal_swings[idx + 1]
-                depth = abs(swing.price_point.price - next_s.price_point.price)
-            else:
-                prev_s = internal_swings[idx - 1]
-                depth = abs(swing.price_point.price - prev_s.price_point.price)
+            # Find closest opposite-orientation neighbor for true leg depth measurement
+            opposite_neighbors = [
+                s for s in internal_swings 
+                if s.orientation != swing.orientation and abs(s.candle_index - swing.candle_index) <= 5
+            ]
 
-            if depth >= (policy.atr_filter_multiplier * atr) or num_internal <= 2:
+            if opposite_neighbors:
+                closest = min(opposite_neighbors, key=lambda s: abs(s.candle_index - swing.candle_index))
+                depth = abs(swing.price_point.price - closest.price_point.price)
+            else:
+                depth = candles[swing.candle_index].range
+
+            # Evaluate depth threshold or small dataset fallback
+            if depth >= (policy.atr_filter_multiplier * atr) or num_internal <= 4:
                 ext_swing = Swing(
                     orientation=swing.orientation,
                     price_point=swing.price_point,
@@ -124,7 +127,7 @@ class SwingEngine:
                     candle_index=swing.candle_index
                 )
                 
-                # Contextual IDM: First internal low immediately preceding an external high
+                # Contextual IDM: Internal low preceding an external high
                 if idx > 0:
                     prev_s = internal_swings[idx - 1]
                     if swing.orientation == SwingOrientation.LOW and prev_s.orientation == SwingOrientation.HIGH:
