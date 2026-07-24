@@ -1,6 +1,6 @@
 """
-APEX Quant OS - Engine 3: Institutional Event Engine (v3.3)
-Features: True BOS Validation (Displacement + Imbalance / FVG + Body Acceptance).
+APEX Quant OS - Engine 3: Institutional Event Engine (v3.5.3)
+Features: True BOS Validation (Displacement + Imbalance / FVG) AND Debounced Wick Sweep (STRUCTURAL_REJECTION) Detection.
 """
 
 from typing import List, Tuple, Set
@@ -20,7 +20,8 @@ from market_language.market_structure.policy import MarketStructurePolicy
 class EventEngine:
     """
     Evaluates institutional expansion against external/internal swings.
-    Enforces body displacement, ATR expansion, and Fair Value Imbalance for BOS validation.
+    Enforces body displacement, ATR expansion, FVG imbalance for BOS,
+    and debounced wick sweeps for STRUCTURAL_REJECTION events.
     """
 
     @staticmethod
@@ -58,13 +59,15 @@ class EventEngine:
                 if c3.high < c1.low:
                     has_bearish_fvg = True
 
-            # --- 1. EVALUATE EXTERNAL BREAKS (BOS REQUIRES DISPLACEMENT + IMBALANCE) ---
+            # --- 1. EVALUATE EXTERNAL HIGHS ---
             for s_high in [s for s in external_swings if s.orientation == SwingOrientation.HIGH and s.lifecycle.value in ["DEVELOPING", "CONFIRMED", "PROTECTED_STRONG", "WEAK_TARGET"]]:
                 if candle.timestamp <= s_high.price_point.timestamp:
                     continue
 
-                # True Bullish BOS Conditions
-                if candle.close > s_high.price_point.price and disp_ratio >= 0.45 and (is_expansion_candle or has_bullish_fvg):
+                level = s_high.price_point.price
+
+                # A. True Bullish BOS (Body Close > Level + Displacement/FVG)
+                if candle.close > level and disp_ratio >= 0.45 and (is_expansion_candle or has_bullish_fvg):
                     evt_type = EventType.EXTERNAL_BOS_BULLISH if current_trend == TrendDirection.BULLISH else EventType.EXTERNAL_CHOCH_BULLISH
                     events.append(
                         StructuralEvent(
@@ -77,12 +80,29 @@ class EventEngine:
                     )
                     s_high.lifecycle = SwingLifecycleState.BROKEN
 
+                # B. Wick Sweep (Structural Rejection) — High > Level, Close <= Level
+                elif candle.high > level and candle.close <= level:
+                    if s_high.id not in swept_ids:
+                        events.append(
+                            StructuralEvent(
+                                event_type=EventType.STRUCTURAL_REJECTION,
+                                trigger_timestamp=candle.timestamp,
+                                trigger_price=candle.high,
+                                broken_swing_id=s_high.id,
+                                confidence=0.8
+                            )
+                        )
+                        swept_ids.add(s_high.id)
+
+            # --- 2. EVALUATE EXTERNAL LOWS ---
             for s_low in [s for s in external_swings if s.orientation == SwingOrientation.LOW and s.lifecycle.value in ["DEVELOPING", "CONFIRMED", "PROTECTED_STRONG", "WEAK_TARGET"]]:
                 if candle.timestamp <= s_low.price_point.timestamp:
                     continue
 
-                # True Bearish BOS Conditions
-                if candle.close < s_low.price_point.price and disp_ratio >= 0.45 and (is_expansion_candle or has_bearish_fvg):
+                level = s_low.price_point.price
+
+                # A. True Bearish BOS
+                if candle.close < level and disp_ratio >= 0.45 and (is_expansion_candle or has_bearish_fvg):
                     evt_type = EventType.EXTERNAL_BOS_BEARISH if current_trend == TrendDirection.BEARISH else EventType.EXTERNAL_CHOCH_BEARISH
                     events.append(
                         StructuralEvent(
@@ -95,7 +115,21 @@ class EventEngine:
                     )
                     s_low.lifecycle = SwingLifecycleState.BROKEN
 
-            # --- 2. EVALUATE INDUCEMENT (IDM) SWEEPS ---
+                # B. Wick Sweep (Structural Rejection) — Low < Level, Close >= Level
+                elif candle.low < level and candle.close >= level:
+                    if s_low.id not in swept_ids:
+                        events.append(
+                            StructuralEvent(
+                                event_type=EventType.STRUCTURAL_REJECTION,
+                                trigger_timestamp=candle.timestamp,
+                                trigger_price=candle.low,
+                                broken_swing_id=s_low.id,
+                                confidence=0.8
+                            )
+                        )
+                        swept_ids.add(s_low.id)
+
+            # --- 3. EVALUATE INDUCEMENT (IDM) SWEEPS ---
             for idm in [s for s in internal_swings if s.is_idm and s.id not in swept_ids]:
                 if candle.timestamp <= idm.price_point.timestamp:
                     continue
